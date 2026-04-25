@@ -1174,9 +1174,18 @@ class Gift(MultiAgentEnv):
             # else:
             #     rewards = rewards * self.num_agents
  
+            # Populate agent_invs from agents_bag so the inventory channels
+            # in the observation are non-zero. Original code passed through
+            # state.agent_invs, which is never written elsewhere -> always [0,0].
+            # ch0 = total tokens (raw+refined+final), ch1 = final-tier tokens.
+            agent_invs_obs = jnp.stack([
+                state.agents_bag.sum(axis=0).astype(jnp.int8),
+                state.agents_bag[2].astype(jnp.int8),
+            ], axis=-1)
+
             state_nxt = State(
                 agent_locs=state.agent_locs,
-                agent_invs=state.agent_invs,
+                agent_invs=agent_invs_obs,
                 inner_t=state.inner_t + 1,
                 outer_t=state.outer_t,
                 grid=state.grid,
