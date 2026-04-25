@@ -2220,7 +2220,7 @@ class PD_Arena(MultiAgentEnv):
             state_re = _reset_state(key)
 
             state_re = state_re.replace(outer_t=outer_t + 1)
-            state = jax.tree_map(
+            state = jax.tree.map(
                 lambda x, y: jnp.where(reset_inner, x, y),
                 state_re,
                 state_nxt,
@@ -2608,7 +2608,7 @@ class PD_Arena(MultiAgentEnv):
             ymax = (j + 1) * tile_height
             xmin = i * tile_width
             xmax = (i + 1) * tile_width
-            img[ymin:ymax, xmin:xmax, :] = onp.int8(255)
+            img[ymin:ymax, xmin:xmax, :] = onp.uint8(255)
         tile_width = width_px // (self.num_outer_steps)
         j = 1
         for i in range(0, outer_t):
@@ -2616,7 +2616,7 @@ class PD_Arena(MultiAgentEnv):
             ymax = (j + 1) * tile_height
             xmin = i * tile_width
             xmax = (i + 1) * tile_width
-            img[ymin:ymax, xmin:xmax, :] = onp.int8(255)
+            img[ymin:ymax, xmin:xmax, :] = onp.uint8(255)
         return img
 
     def get_inequity_aversion_rewards_immediate(self, array, inner_t, target_agents=None, alpha=5, beta=0.05):

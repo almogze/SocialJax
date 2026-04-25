@@ -2130,7 +2130,7 @@ class Territory_open(MultiAgentEnv):
             state_re = _reset_state(key)
 
             state_re = state_re.replace(outer_t=outer_t + 1)
-            state = jax.tree_map(
+            state = jax.tree.map(
                 lambda x, y: jnp.where(reset_inner, x, y),
                 state_re,
                 state_nxt,
@@ -2354,8 +2354,8 @@ class Territory_open(MultiAgentEnv):
         elif obj == Items.wall_highlight_ne or obj == Items.wall_highlight_se or obj == Items.wall_highlight_sw or obj == Items.wall_highlight_nw or obj == Items.wall:
             fill_coords(img, point_in_rect(0, 1, 0, 1), (200.0, 200.0, 200.0))
         elif obj in claimed_resources_color_array:
-            color_index = jnp.where(obj==claimed_resources_color_array)[0]
-            fill_coords(img, point_in_rect(0, 1, 0, 1), self.PLAYER_COLOURS[int(color_index)])
+            color_index = int(jnp.where(obj==claimed_resources_color_array)[0][0])
+            fill_coords(img, point_in_rect(0, 1, 0, 1), self.PLAYER_COLOURS[color_index])
         elif obj == 999:
             fill_coords(img, point_in_rect(0.1, 0.9, 0.3, 0.9), (117, 88, 71))
         elif obj == Items.interact:

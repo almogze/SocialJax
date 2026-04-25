@@ -1428,6 +1428,7 @@ class Harvest_open(MultiAgentEnv):
             
             AppleCount = jnp.sum(state.grid == Items.apple)
             info["AppleCount_info"] = jnp.zeros((self.num_agents, 1)).squeeze() + AppleCount
+            info["reborn_players"] = reborn_players
             
             
             state_nxt = State(
@@ -1450,7 +1451,7 @@ class Harvest_open(MultiAgentEnv):
             state_re = _reset_state(key)
 
             state_re = state_re.replace(outer_t=outer_t + 1)
-            state = jax.tree_map(
+            state = jax.tree.map(
                 lambda x, y: jnp.where(reset_inner, x, y),
                 state_re,
                 state_nxt,
