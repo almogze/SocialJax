@@ -1244,6 +1244,7 @@ class Harvest_open(MultiAgentEnv):
             
             AppleCount = jnp.sum(state.grid == Items.apple)
             info["AppleCount_info"] = jnp.zeros((self.num_agents, 1)).squeeze() + AppleCount
+            info["reborn_players"] = reborn_players
             
             
             state_nxt = State(
