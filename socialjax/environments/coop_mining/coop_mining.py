@@ -701,6 +701,10 @@ class CoopMining(MultiAgentEnv):
             info = {}
 
         info["mining_gold"] = rewards_gold * self.num_agents
+        # Iron reward surfaced alongside gold so downstream trainers can compute
+        # the cooperative-gold vs solo-iron strategic split (the Coop Mining
+        # analog of Gift's give_rate). Per-agent, same scaling as mining_gold.
+        info["mining_iron"] = rewards_iron * self.num_agents
 
         # if self.shared_rewards:
         #     total_rewards = jnp.sum(rewards_iron + rewards_gold)  # Scalar
