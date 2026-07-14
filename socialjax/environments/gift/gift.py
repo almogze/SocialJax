@@ -965,7 +965,7 @@ class Gift(MultiAgentEnv):
             
             # regrow coins
             grid_coins = state.grid
-            probability = 0.0002
+            probability = 0.0004  # v1-regrow-probe: doubled from 0.0002
             def regrow_coins(coins_loc, p):
                 new_coins = jnp.where((((grid_coins[coins_loc[0], coins_loc[1]] == Items.empty) & (p < probability))
                                       | ((grid_coins[coins_loc[0], coins_loc[1]] == Items.coins))), 
