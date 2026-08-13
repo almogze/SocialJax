@@ -833,6 +833,16 @@ class CoopMining(MultiAgentEnv):
             new_cd = jnp.where(finalize | revert, 0, new_cd)
             new_cd = jnp.where((item == Items.gold_ore) & do_mine, self.partial_window, new_cd)
 
+            # Once a gold cell is resolved (finalized, or over-subscribed and
+            # reverted) clear its miner registry so that a *fresh* pair of
+            # distinct agents is required the next time gold regrows on this
+            # cell. Without this the registry persists across regrowth and a
+            # single already-registered agent can re-finalize the cell solo
+            # (the never-reset-registry bug: gold "coordination" degrades into
+            # permanent solo farming after one initial pairing).
+            resolved = finalize | revert
+            new_miners = jnp.where(resolved, -1, new_miners)
+
             # Write back updates if in bounds
             new_grid = jnp.where(in_bounds,
                                  grid.at[pos[0], pos[1]].set(gold_item),
@@ -880,6 +890,18 @@ class CoopMining(MultiAgentEnv):
 
         # Decrement partial gold timer
         final_partial_cd = jnp.maximum(final_partial_cd - 1, 0)
+
+        # Enforce the gold mining window: any cell still in gold_partial whose
+        # countdown has expired (no second distinct miner arrived within
+        # gold_mining_window steps) reverts to gold_ore and its miner registry
+        # is cleared, so a fresh synchronized pairing is required. Previously
+        # the countdown was decremented but never read, so gold_mining_window
+        # had no effect on dynamics (dead code) and a lone partial persisted
+        # indefinitely, letting the two contributions be arbitrarily far apart
+        # in time.
+        timed_out = (final_grid == Items.gold_partial) & (final_partial_cd == 0)
+        final_grid = jnp.where(timed_out, Items.gold_ore, final_grid)
+        final_ore_miners = jnp.where(timed_out[:, :, None], -1, final_ore_miners)
 
         return (final_positions,
                 final_iron_rewards,
