@@ -12,6 +12,34 @@
 
 *A suite of sequential social dilemma environments for multi-agent reinforcement learning in JAX*
 
+---
+
+## Fork Notes (`almogze/SocialJax`)
+
+This is a research fork of [cooperativex/SocialJax](https://github.com/cooperativex/SocialJax),
+used as the environment backend for the MARP (Multi-Agent Reward Prediction) project
+(see the `marp-socialjax` repo). It tracks upstream but carries a handful of environment
+fixes and research manipulations. Upstream is the `upstream` remote; this fork is `origin`.
+
+**What this fork changes vs upstream**
+
+| Change | Where | Branch |
+|---|---|---|
+| `jax.tree_map` → `jax.tree.map` compat + package renamed to `socialjax` | package-wide | `main` |
+| **Gift dead-inventory observation fix** — populate `agent_invs` from `agents_bag` at end-of-step so the policy actually observes bag contents (ch0 = total tokens, ch1 = final-tier tokens) | `socialjax/environments/gift/gift.py` | `fix/agent-invs-obs-gift` |
+| **Coop Mining gold-coordination fix** — reset the `ore_miners` registry on finalize/revert and enforce the cooperative-mining window, so "gold coordination" can no longer be faked by a stale registry + dead time-window (confirmed a real bug with upstream author Zihao Guo) | `socialjax/environments/coop_mining/coop_mining.py` | `fix/coop-mining-gold-coordination` |
+| Coop Mining: surface per-agent iron reward in the `info` dict | `socialjax/environments/coop_mining/coop_mining.py` | `fix/coop-mining-gold-coordination` |
+| Gift: double coin regrow probability (0.0002 → 0.0004) — research manipulation, not a bug fix | `socialjax/environments/gift/gift.py` | `fix/coop-mining-gold-coordination` |
+
+**Regression tests for the fixes** live in `tests/` (e.g. `tests/test_coop_mining_gold_coordination.py`),
+which exercise the real `step_env` path and were confirmed failing pre-fix.
+
+> The gold-coordination fix is **not** merged into `bench/coop-mining` and no benchmark
+> re-run has been done yet — the re-run-vs-caveat decision is pending. Treat `main` as the
+> upstream-compat baseline and pull individual fixes from their feature branches as needed.
+
+---
+
 
 
 <div class="collage">
