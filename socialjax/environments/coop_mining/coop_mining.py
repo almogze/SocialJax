@@ -624,7 +624,7 @@ class CoopMining(MultiAgentEnv):
 
         # 3) Clip to grid bounds
         row_max, col_max = self.GRID_SIZE_ROW, self.GRID_SIZE_COL
-        new_rc = jnp.clip(new_rc, a_min=jnp.array([0, 0]), a_max=jnp.array([row_max - 1, col_max - 1]))
+        new_rc = jnp.clip(new_rc, min=jnp.array([0, 0]), max=jnp.array([row_max - 1, col_max - 1]))
 
         # 4. Handle walls
         wall_mask = (state.grid[new_rc[:, 0], new_rc[:, 1]] == Items.wall)  # (N,)

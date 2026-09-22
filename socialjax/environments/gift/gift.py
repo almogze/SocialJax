@@ -789,8 +789,8 @@ class Gift(MultiAgentEnv):
                 return jnp.logical_and(agnt_bool, self_bool)
 
             # check 1 ahead
-            clip_row = partial(jnp.clip, a_min=0, a_max=self.GRID_SIZE_ROW - 1)
-            clip_col = partial(jnp.clip, a_min=0, a_max=self.GRID_SIZE_COL - 1)
+            clip_row = partial(jnp.clip, min=0, max=self.GRID_SIZE_ROW - 1)
+            clip_col = partial(jnp.clip, min=0, max=self.GRID_SIZE_COL - 1)
 
             one_step_targets = jax.vmap(
                 lambda p: p + STEP[p[2]]
