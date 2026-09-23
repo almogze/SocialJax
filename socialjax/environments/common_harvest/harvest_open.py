@@ -1312,7 +1312,14 @@ class Harvest_open(MultiAgentEnv):
             # rewards_sum_all_agents += rewards_sum
             # rewards = rewards_sum_all_agents
 
-            new_invs = state.agent_invs + apple_matches
+            # agent_invs is int8 and counts apples for the whole episode, so
+            # adding in int8 wraps to -128 after 127 apples: the observation's
+            # inventory goes negative and the agent loses the ability to zap
+            # (pickup needs a positive inventory). Saturate at 127 instead.
+            # Identical to the original below 127 apples.
+            new_invs = jnp.minimum(
+                state.agent_invs.astype(jnp.int16) + apple_matches, 127
+            ).astype(jnp.int8)
 
             state = state.replace(
                 agent_invs=new_invs
