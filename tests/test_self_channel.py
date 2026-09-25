@@ -26,7 +26,7 @@ def test_each_agent_sees_itself_once(env_id):
     key = jax.random.PRNGKey(0)
     obs, state = env.reset(key)
     for t in range(40):
-        o = np.stack([np.asarray(obs[i]) for i in range(n)])  # (N, H, W, C)
+        o = np.asarray(obs)  # (N, H, W, C)
         selfmap = o[..., self_ch] != 0
         per_agent = selfmap.reshape(n, -1).sum(1)
         assert (per_agent == 1).all(), f"{env_id} step {t}: self-channel cells per agent {per_agent.tolist()}"
@@ -34,4 +34,5 @@ def test_each_agent_sees_itself_once(env_id):
         assert other_on_self == 0, f"{env_id} step {t}: an agent sees itself as another agent"
         key, k1, k2 = jax.random.split(key, 3)
         acts = jax.random.randint(k1, (n,), 0, env.action_space(0).n)
-        obs, state, _, _, _ = env.step(k2, state, {i: acts[i] for i in range(n)})
+        # same call the MARP wrapper makes (marp/envs/socialjax_wrapper.py)
+        obs, state, _, _, _ = env.step_env(k2, state, [acts[i] for i in range(n)])
