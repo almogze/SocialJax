@@ -848,7 +848,11 @@ class Mushrooms(MultiAgentEnv):
             
             # regrow mushrooms
             grid_mushrooms = state.grid
-            noise = jax.random.uniform(key, shape=(len(state.potential_empty_labels),)) * 1e-4
+            # One independent key per random draw. Upstream drew the noise and the red, green and
+            # blue regrowth probabilities from the same `key` with the same shape, so the three
+            # colours' regrowth draws were identical (perfectly correlated) at every step.
+            key, k_noise, k_red, k_green, k_blue, k_orange = jax.random.split(key, 6)
+            noise = jax.random.uniform(k_noise, shape=(len(state.potential_empty_labels),)) * 1e-4
             label_with_noise = state.potential_empty_labels + noise
             label_with_noise_rank = jnp.sort(label_with_noise)
             # label_with_noise_rank = jnp.flip(label_with_noise_rank) 
@@ -865,7 +869,7 @@ class Mushrooms(MultiAgentEnv):
             red_mushrooms_regrowth_check_time = jnp.sum(state.mushrooms_matches) * 2
             red_mushrooms_regrowth_check_time = jnp.where(jnp.sum(grid_mushrooms == Items.red_mushrooms) > max_mushrooms, 0, red_mushrooms_regrowth_check_time)
             red_mushrooms_regrowth_check_time = jnp.array(red_mushrooms_regrowth_check_time, dtype=jnp.int16)
-            p = jax.random.uniform(key, shape=(max_mushrooms,))
+            p = jax.random.uniform(k_red, shape=(max_mushrooms,))
 
             p = jnp.where(jnp.arange(p.shape[0]) >= red_mushrooms_regrowth_check_time, 1.0, p)
 
@@ -888,7 +892,7 @@ class Mushrooms(MultiAgentEnv):
             green_mushrooms_regrowth_check_time = jnp.sum(state.mushrooms_matches[:,1:3]) * 2
             green_mushrooms_regrowth_check_time = jnp.where(jnp.sum(grid_mushrooms == Items.green_mushrooms) > max_mushrooms, 0, green_mushrooms_regrowth_check_time)
             green_mushrooms_regrowth_check_time = jnp.array(green_mushrooms_regrowth_check_time, dtype=jnp.int16)
-            p = jax.random.uniform(key, shape=(max_mushrooms,))
+            p = jax.random.uniform(k_green, shape=(max_mushrooms,))
             p = jnp.where(jnp.arange(p.shape[0]) >= green_mushrooms_regrowth_check_time, 1.0, p)
 
             green_mushrooms_locs = unstable_sorted_locs[max_mushrooms:max_mushrooms*2, :]
@@ -909,7 +913,7 @@ class Mushrooms(MultiAgentEnv):
             blue_mushrooms_regrowth_check_time = jnp.sum(state.mushrooms_matches[:,2:3]) * 2
             blue_mushrooms_regrowth_check_time = jnp.where(jnp.sum(grid_mushrooms == Items.blue_mushrooms) > max_mushrooms, 0, blue_mushrooms_regrowth_check_time)
             blue_mushrooms_regrowth_check_time = jnp.array(blue_mushrooms_regrowth_check_time, dtype=jnp.int16)
-            p = jax.random.uniform(key, shape=(max_mushrooms,))
+            p = jax.random.uniform(k_blue, shape=(max_mushrooms,))
             p = jnp.where(jnp.arange(p.shape[0]) >= blue_mushrooms_regrowth_check_time, 1.0, p)
 
             blue_mushrooms_locs = unstable_sorted_locs[max_mushrooms*2:max_mushrooms*3, :]
@@ -925,7 +929,7 @@ class Mushrooms(MultiAgentEnv):
             # only one orange mushroom would exist in the map
             # orange mushrooms regrowth
             orange_mushrooms_regrowth_check_time = jnp.sum(state.mushrooms_matches[:,3:4])
-            p = jax.random.uniform(key, shape=(1,))
+            p = jax.random.uniform(k_orange, shape=(1,))
             p = jnp.where(jnp.arange(p.shape[0]) >= orange_mushrooms_regrowth_check_time, 1.0, p)
 
             orange_mushrooms_locs = unstable_sorted_locs[max_mushrooms*3:max_mushrooms*3 + 1, :]
