@@ -1189,6 +1189,8 @@ class Mushrooms(MultiAgentEnv):
             
             blue_reward  = jnp.where(blue_matches, 1, 0)
             info["eat_blue_mushrooms"] = blue_reward.squeeze()
+            # agents zapped this step (respawned at the start of the next), as in the other envs
+            info["reborn_players"] = reborn_players
 
 
  

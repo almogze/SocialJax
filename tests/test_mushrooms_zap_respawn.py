@@ -1,4 +1,4 @@
-"""Mushrooms: off-grid zaps hit nothing, respawns never delete a mushroom (2026-10-10).
+"""Mushrooms: off-grid zaps hit nothing, respawns never delete a mushroom, info['reborn_players'] (2026-10-10).
 
 A zap's four targets (one ahead, two ahead, ahead-right, ahead-left) were not bounds-checked. JAX gathers clamp an
 index past the end and wrap a negative one, so a zap facing out of the bottom or right edge read the zapper's own
@@ -7,7 +7,7 @@ cell and respawned the zapper, and one facing out of the top or left edge hit ag
 Spawn cells are the cells where mushrooms regrow. A reborn agent could be placed on a mushroom (deleting it with no
 eat event), and a mushroom regrown at the start of a step on that step's respawn cell was deleted the same way.
 
-The edge-zap, respawn and regrowth tests fail on a36759f. The in-bounds zap tests pass there too: that
+The edge-zap, respawn, regrowth and info tests fail on a36759f. The in-bounds zap tests pass there too: that
 behaviour is unchanged.
 
 Run: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python -m pytest tests/test_mushrooms_zap_respawn.py
@@ -200,3 +200,26 @@ def test_no_regrowth_on_the_cell_an_agent_respawns_on():
         reds = sorted(map(tuple, onp.argwhere(g == Items.red_mushrooms).tolist()))
         assert reds == sorted(set(empty) - {cell}), f"key {key}: reds {reds}"
         assert int((g == Items.orange_mushrooms).sum()) == int((onp.asarray(st.grid) == Items.orange_mushrooms).sum())
+
+
+def test_info_reborn_players_is_the_zap_hit_mask():
+    # What marp's SocialJaxWrapper.get_agent_tagged() reads; without it Mushrooms logged peace = 1.0 always.
+    env, step = _env()
+    zapper = (5, 10, 0)
+    locs = [zapper] + [tuple(t) + (0,) for t in _targets(zapper, 0)[:2]] + FAR
+    _, st1, _, _, info = _step(step, _state(env, locs), [Z] + [S] * (N - 1), key=9)
+    r = onp.asarray(info["reborn_players"])
+    assert r.shape == (N,) and r.dtype == bool
+    assert onp.array_equal(r, [False, True, True, False, False, False])
+    _, _, _, _, info = _step(step, st1, [S] * N, key=10)
+    assert not onp.asarray(info["reborn_players"]).any()
+    _, _, _, _, info = _step(step, _state(env, EDGE_ZAPS[2] + FAR), [Z] + [S] * (N - 1), key=11)
+    assert not onp.asarray(info["reborn_players"]).any()
+
+
+def test_info_reborn_players_with_shared_rewards():
+    env = socialjax.make("mushrooms", num_agents=N, shared_rewards=True)
+    _, st = env.reset(jax.random.PRNGKey(0))
+    _, _, _, _, info = env.step_env(jax.random.PRNGKey(1), st, [jnp.array(S)] * N)
+    r = onp.asarray(info["reborn_players"])
+    assert r.shape == (N,) and r.dtype == bool and not r.any()
