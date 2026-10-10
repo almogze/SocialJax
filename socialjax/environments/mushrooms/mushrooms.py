@@ -870,7 +870,16 @@ class Mushrooms(MultiAgentEnv):
             # colours' regrowth draws were identical (perfectly correlated) at every step.
             key, k_noise, k_red, k_green, k_blue, k_orange = jax.random.split(key, 6)
             noise = jax.random.uniform(k_noise, shape=(len(state.potential_empty_labels),)) * 1e-4
-            label_with_noise = state.potential_empty_labels + noise
+            # The cells this step's reborn agents are placed on below (state.reborn_locs, chosen at the
+            # end of the last step) rank with the agents' cells, so no mushroom regrows under an agent
+            # about to land there (the placement would delete it). A survivor's reborn_loc is its own
+            # cell, which already holds an agent label, so after a step with no zap hit the ranking is
+            # unchanged.
+            arriving = jnp.any(jnp.all(
+                state.potential_empty_locs[:, None, :] == state.reborn_locs[None, :, :2], axis=-1), axis=-1)
+            rank_labels = jnp.where(
+                arriving, jnp.maximum(state.potential_empty_labels, self._agents[0]), state.potential_empty_labels)
+            label_with_noise = rank_labels + noise
             label_with_noise_rank = jnp.sort(label_with_noise)
             # label_with_noise_rank = jnp.flip(label_with_noise_rank) 
             unstable_indices = jnp.argsort(label_with_noise)
@@ -1107,9 +1116,14 @@ class Mushrooms(MultiAgentEnv):
 
             # Occupancy-aware respawn: reborn agents are placed on spawn
             # cells not occupied by any survivor, so no overlap is possible.
+            # Spawn cells are also where mushrooms regrow, and landing on one
+            # would delete its mushroom: those cells count as taken too.
             key, respawn_key = jax.random.split(key)
+            spawn_items = state.grid[self.SPAWNS_PLAYERS[:, 0], self.SPAWNS_PLAYERS[:, 1]]
+            on_mushroom = (spawn_items >= Items.red_mushrooms) & (spawn_items <= Items.orange_mushrooms)
             new_re_locs = resolve_respawn(
-                respawn_key, new_locs, reborn_players.astype(bool), self.SPAWNS_PLAYERS
+                respawn_key, new_locs, reborn_players.astype(bool), self.SPAWNS_PLAYERS,
+                blocked=on_mushroom,
             )
             state = state.replace(reborn_locs=new_re_locs)
 

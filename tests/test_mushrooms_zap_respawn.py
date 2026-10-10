@@ -1,10 +1,14 @@
-"""Mushrooms: off-grid zaps hit nothing (2026-10-10).
+"""Mushrooms: off-grid zaps hit nothing, respawns never delete a mushroom (2026-10-10).
 
 A zap's four targets (one ahead, two ahead, ahead-right, ahead-left) were not bounds-checked. JAX gathers clamp an
 index past the end and wrap a negative one, so a zap facing out of the bottom or right edge read the zapper's own
 cell and respawned the zapper, and one facing out of the top or left edge hit agents on the far side of the map.
 
-The edge-zap tests fail on a36759f. The in-bounds zap tests pass there too: that behaviour is unchanged.
+Spawn cells are the cells where mushrooms regrow. A reborn agent could be placed on a mushroom (deleting it with no
+eat event), and a mushroom regrown at the start of a step on that step's respawn cell was deleted the same way.
+
+The edge-zap, respawn and regrowth tests fail on a36759f. The in-bounds zap tests pass there too: that
+behaviour is unchanged.
 
 Run: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python -m pytest tests/test_mushrooms_zap_respawn.py
 """
@@ -21,6 +25,7 @@ N = 6
 NI = len(Items)  # agent i is grid value NI + i
 Z, S = int(Actions.zap_forward), int(Actions.stay)
 FAR = [(3, 14, 0), (7, 16, 0), (9, 18, 0)]  # bystanders out of reach of every zap below
+MUSHROOMS = (Items.red_mushrooms, Items.green_mushrooms, Items.blue_mushrooms, Items.orange_mushrooms)
 
 _ENVS = {}
 
@@ -134,3 +139,64 @@ def test_zap_at_the_edge_still_hits_the_in_bounds_target():
     st = _state(env, [(10, 5, 0), (11, 5, 0), (11, 6, 0)] + FAR)
     _, st1, _, _, _ = _step(step, st, [Z] + [S] * (N - 1), key=6)
     assert onp.array_equal(_scheduled(st1), [False, True, True, False, False, False])
+
+
+@pytest.mark.parametrize("item", [Items.blue_mushrooms, Items.orange_mushrooms])
+def test_respawn_never_lands_on_a_mushroom(item):
+    # Find where agent 1 respawns after being zapped under a fixed key, then put a mushroom on that cell and zap
+    # again under the same key: the respawn must pick another cell, and the mushroom must survive the landing.
+    env, step = _env()
+    locs = [(5, 5, 0), (6, 5, 0), (1, 1, 0)] + FAR
+    _, st1, _, _, _ = _step(step, _state(env, locs), [Z] + [S] * (N - 1), key=7)
+    cell = tuple(onp.asarray(st1.reborn_locs)[1, :2].tolist())
+    assert _scheduled(st1)[1] and cell in _spawn_cells(env)
+
+    st = _state(env, locs, mushrooms=[cell + (int(item),)])
+    _, st1, _, _, _ = _step(step, st, [Z] + [S] * (N - 1), key=7)
+    new_cell = tuple(onp.asarray(st1.reborn_locs)[1, :2].tolist())
+    assert new_cell != cell, "respawn chose the mushroom's cell"
+    assert new_cell in _spawn_cells(env)
+    _, st2, _, _, _ = _step(step, st1, [S] * N, key=8)
+    g = onp.asarray(st2.grid)
+    assert g[cell] == item, "the mushroom was deleted"
+    assert int((g == item).sum()) == 1
+    assert tuple(onp.asarray(st2.agent_locs)[1, :2].tolist()) == new_cell
+
+
+def test_respawn_avoids_mushrooms_in_a_random_rollout():
+    env, step = _env()
+    # On a36759f this rollout schedules two respawns onto a mushroom, the first at step 228.
+    rng = onp.random.default_rng(1)
+    _, st = env.reset(jax.random.PRNGKey(1))
+    hits = 0
+    for t in range(500):
+        acts = onp.where(rng.random(N) < 0.3, Z, rng.integers(0, 7, size=N))
+        _, st, _, _, _ = _step(step, st, acts.tolist(), key=100 + t)
+        reborn = _scheduled(st)
+        g = onp.asarray(st.grid)
+        for r, c in onp.asarray(st.reborn_locs)[reborn, :2].tolist():
+            assert g[r, c] not in MUSHROOMS, f"step {t}: respawn scheduled onto a mushroom at {(r, c)}"
+        hits += int(reborn.sum())
+    assert hits > 10, "too few zap hits: the test checked little"
+
+
+def test_no_regrowth_on_the_cell_an_agent_respawns_on():
+    # Agent 1 was zapped last step and lands on `cell` at the start of this one. Only six spawn cells are empty
+    # (orange everywhere else) and red regrows on the five best-ranked ones with certainty. Before the fix `cell`
+    # competed for those five slots and its red was then deleted by the landing agent.
+    env, step = _env(regrow_rate_red=1.0)
+    locs = [(5, 5, 0), (6, 5, 0), (1, 1, 0)] + FAR
+    empty = [(0, 3), (2, 7), (4, 12), (9, 2), (10, 20), (11, 11)]
+    cell = empty[3]
+    reborn = onp.asarray(locs, dtype=onp.int16)
+    reborn[1] = cell + (1,)
+    matches = onp.zeros((N, 4), dtype=bool)
+    matches[:3, 0] = True  # three reds eaten last step: 6 red regrowth trials (capped at 5)
+    st = _state(env, locs, fill=int(Items.orange_mushrooms), keep_empty=empty, reborn=reborn, matches=matches)
+    for key in range(6):
+        _, st1, _, _, _ = _step(step, st, [S] * N, key=key)
+        g = onp.asarray(st1.grid)
+        assert g[cell] == NI + 1, "agent 1 did not land on its respawn cell"
+        reds = sorted(map(tuple, onp.argwhere(g == Items.red_mushrooms).tolist()))
+        assert reds == sorted(set(empty) - {cell}), f"key {key}: reds {reds}"
+        assert int((g == Items.orange_mushrooms).sum()) == int((onp.asarray(st.grid) == Items.orange_mushrooms).sum())
