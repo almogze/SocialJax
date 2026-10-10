@@ -634,6 +634,12 @@ class Mushrooms(MultiAgentEnv):
             clip_row = partial(jnp.clip, min=0, max=self.GRID_SIZE_ROW - 1)
             clip_col = partial(jnp.clip, min=0, max=self.GRID_SIZE_COL - 1)
 
+            def in_bounds(t):
+                return (
+                    (t[:, 0] >= 0) & (t[:, 0] < self.GRID_SIZE_ROW)
+                    & (t[:, 1] >= 0) & (t[:, 1] < self.GRID_SIZE_COL)
+                )
+
             one_step_targets = jax.vmap(
                 lambda p: p + STEP[p[2]]
             )(state.agent_locs)
@@ -715,13 +721,21 @@ class Mushrooms(MultiAgentEnv):
 
             zaps_4_locs = jnp.concatenate((zaps, zaps, zaps, zaps), 0)
 
+            # Off-grid targets hit nothing. JAX gathers clamp an index past
+            # the end and wrap a negative one, so unchecked, a zap facing out
+            # of the bottom or right edge read the zapper's own cell (and
+            # respawned it) and one facing out of the top or left edge hit
+            # whoever stood on the far side of the map.
+            all_zaped_valid = jnp.concatenate((
+                in_bounds(one_step_targets), in_bounds(two_step_targets),
+                in_bounds(target_right), in_bounds(target_left)), 0)
 
             # all_zaped_locs = jax.vmap(filter_zaped_locs)(all_zaped_locs)
 
-            def zaped_gird(a, z):
-                return jnp.where(z, state.grid[a[0], a[1]], -1)
+            def zaped_gird(a, z, v):
+                return jnp.where(z & v, state.grid[clip_row(a[0]), clip_col(a[1])], -1)
 
-            all_zaped_gird = jax.vmap(zaped_gird)(all_zaped_locs, zaps_4_locs)
+            all_zaped_gird = jax.vmap(zaped_gird)(all_zaped_locs, zaps_4_locs, all_zaped_valid)
             
 
             def check_reborn_player(a):
@@ -784,14 +798,17 @@ class Mushrooms(MultiAgentEnv):
 
             qualified_to_zap = zaps.squeeze()
             # jax.debug.print("qualified_to_zap {qualified_to_zap} 🤯", qualified_to_zap=qualified_to_zap)
-            # update grid
+            # update grid; off-grid targets are sent past the last row, where
+            # the scatter drops them (a negative index would wrap instead)
             def update_grid(a_i, t, i, grid):
-                return grid.at[t[:, 0], t[:, 1]].set(
+                row = jnp.where(in_bounds(t), t[:, 0], self.GRID_SIZE_ROW)
+                return grid.at[row, t[:, 1]].set(
                     jax.vmap(jnp.where)(
                         a_i,
                         i,
                         aux_grid[t[:, 0], t[:, 1]]
-                    )
+                    ),
+                    mode="drop",
                 )
             # def update_grid(a_i, t, i, grid):
             #     return grid.at[t[:, 0], t[:, 1]].set(2)
