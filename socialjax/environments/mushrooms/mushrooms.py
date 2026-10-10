@@ -799,7 +799,10 @@ class Mushrooms(MultiAgentEnv):
             qualified_to_zap = zaps.squeeze()
             # jax.debug.print("qualified_to_zap {qualified_to_zap} 🤯", qualified_to_zap=qualified_to_zap)
             # update grid; off-grid targets are sent past the last row, where
-            # the scatter drops them (a negative index would wrap instead)
+            # the scatter drops them (a negative index would wrap instead).
+            # This also drops the write-back of a non-zapping agent facing off
+            # the top or left edge, which before could overwrite an in-bounds
+            # zapper's interact mark on the far side of the map.
             def update_grid(a_i, t, i, grid):
                 row = jnp.where(in_bounds(t), t[:, 0], self.GRID_SIZE_ROW)
                 return grid.at[row, t[:, 1]].set(
@@ -1117,7 +1120,9 @@ class Mushrooms(MultiAgentEnv):
             # Occupancy-aware respawn: reborn agents are placed on spawn
             # cells not occupied by any survivor, so no overlap is possible.
             # Spawn cells are also where mushrooms regrow, and landing on one
-            # would delete its mushroom: those cells count as taken too.
+            # would delete its mushroom: those cells count as taken too (used
+            # only if no other free spawn cell is left, which the default map
+            # cannot reach).
             key, respawn_key = jax.random.split(key)
             spawn_items = state.grid[self.SPAWNS_PLAYERS[:, 0], self.SPAWNS_PLAYERS[:, 1]]
             on_mushroom = (spawn_items >= Items.red_mushrooms) & (spawn_items <= Items.orange_mushrooms)

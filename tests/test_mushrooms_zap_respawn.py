@@ -7,8 +7,10 @@ cell and respawned the zapper, and one facing out of the top or left edge hit ag
 Spawn cells are the cells where mushrooms regrow. A reborn agent could be placed on a mushroom (deleting it with no
 eat event), and a mushroom regrown at the start of a step on that step's respawn cell was deleted the same way.
 
-The edge-zap, respawn, regrowth and info tests fail on a36759f. The in-bounds zap tests pass there too: that
-behaviour is unchanged.
+The edge-zap, respawn, regrowth and info tests fail on a36759f. The in-bounds zap tests pass there too: who an
+in-bounds zap hits is unchanged. Its interact mark can differ: before, a non-zapping agent facing off the top or
+left edge wrote the old cell value back on the far side of the map, which could erase an in-bounds zapper's mark
+there. That write is now dropped.
 
 Run: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python -m pytest tests/test_mushrooms_zap_respawn.py
 """
@@ -223,3 +225,31 @@ def test_info_reborn_players_with_shared_rewards():
     _, _, _, _, info = env.step_env(jax.random.PRNGKey(1), st, [jnp.array(S)] * N)
     r = onp.asarray(info["reborn_players"])
     assert r.shape == (N,) and r.dtype == bool and not r.any()
+
+
+@pytest.mark.parametrize("zapper", [(0, 5, 2), (1, 5, 2), (5, 0, 3), (5, 1, 3), (11, 5, 0), (6, 22, 1)])
+def test_zap_off_the_grid_leaves_no_far_side_mark(zapper):
+    # A lone zapper facing out of an edge: only its on-grid targets are marked. Unchecked, the top/left cases wrote
+    # interact marks on the far side of the map (rows 10-11 or cols 21-22). The edge tests above cannot see this:
+    # their agents stand on the wrapped cells, where a wrapped write just puts the agent's id back.
+    env, step = _env()
+    R, C = env.GRID_SIZE_ROW, env.GRID_SIZE_COL
+    st = _state(env, [zapper] + FAR + [(4, 18, 0), (2, 10, 0)])
+    _, st1, _, _, _ = _step(step, st, [Z] + [S] * (N - 1), key=12)
+    marks = set(map(tuple, onp.argwhere(onp.asarray(st1.grid) == Items.interact).tolist()))
+    p, h = onp.asarray(zapper[:2]), zapper[2]
+    step_ = onp.asarray(STEP)[:, :2]
+    on = lambda t: 0 <= t[0] < R and 0 <= t[1] < C
+    t1 = p + step_[h]
+    ts = [t1, p + 2 * step_[h]] + [t if on(t) else t1 for t in (t1 + step_[(h + 1) % 4], t1 + step_[(h - 1) % 4])]
+    assert marks == {tuple(int(x) for x in t) for t in ts if on(t)}, sorted(marks)
+
+
+@pytest.mark.parametrize("locs, hit", [
+    ([(1, 5, 2), (0, 5, 0), (11, 5, 0)], [False, True, False]),   # two ahead (-1, 5) wrapped to row 11
+    ([(5, 1, 3), (5, 0, 0), (5, 22, 0)], [False, True, False]),   # two ahead (5, -1) wrapped to col 22
+])
+def test_zap_two_ahead_off_the_grid_hits_only_the_on_grid_target(locs, hit):
+    env, step = _env()
+    _, st1, _, _, _ = _step(step, _state(env, locs + FAR), [Z] + [S] * (N - 1), key=13)
+    assert onp.array_equal(_scheduled(st1), hit + [False] * 3)
