@@ -210,6 +210,45 @@ def test_respawn():
         assert bool(positions_unique(out))
 
 
+def test_respawn_blocked():
+    spawns = jnp.array(
+        [[0, 0], [0, 3], [3, 0], [3, 3], [1, 1], [2, 2]], dtype=jnp.int16
+    )
+    agent_locs = locs([0, 0, 1], [9, 9, 0], [3, 3, 2], [9, 8, 0])
+    reborn = jnp.array([False, True, False, True])
+    # An all-False mask ranks exactly like no mask: same cells, same headings.
+    none_blocked = jnp.zeros(spawns.shape[0], dtype=bool)
+    for i in range(50):
+        k = jax.random.PRNGKey(i)
+        assert jnp.array_equal(
+            resolve_respawn(k, agent_locs, reborn, spawns),
+            resolve_respawn(k, agent_locs, reborn, spawns, blocked=none_blocked),
+        )
+
+    # Free cells (0,3) and (3,0) are taken before the blocked ones.
+    blocked = jnp.array([False, False, False, False, True, True])
+    for i in range(100):
+        out = resolve_respawn(
+            jax.random.PRNGKey(i), agent_locs, reborn, spawns, blocked=blocked
+        )
+        assert jnp.array_equal(out[0], agent_locs[0])
+        assert jnp.array_equal(out[2], agent_locs[2])
+        got = sorted(map(tuple, onp.asarray(out[jnp.array([1, 3]), :2]).tolist()))
+        assert got == [(0, 3), (3, 0)], got
+
+    # With only one free cell the second reborn agent takes a blocked cell,
+    # never a survivor's: positions stay pairwise distinct.
+    blocked = jnp.array([False, True, False, False, True, True])
+    for i in range(100):
+        out = resolve_respawn(
+            jax.random.PRNGKey(i), agent_locs, reborn, spawns, blocked=blocked
+        )
+        assert bool(positions_unique(out))
+        got = set(map(tuple, onp.asarray(out[jnp.array([1, 3]), :2]).tolist()))
+        assert (3, 0) in got
+        assert got - {(3, 0)} <= {(0, 3), (1, 1), (2, 2)}
+
+
 if __name__ == "__main__":
     run("head-on same target + no index bias", test_head_on_same_target)
     run("mover vs stayer / rotator", test_mover_vs_stayer_and_rotator)
@@ -221,4 +260,5 @@ if __name__ == "__main__":
     run("swap + contest interaction", test_swap_plus_contest)
     run("randomized property test", test_property_random)
     run("occupancy-aware respawn", test_respawn)
+    run("respawn avoids blocked cells", test_respawn_blocked)
     print("ALL MOVEMENT TESTS PASSED")

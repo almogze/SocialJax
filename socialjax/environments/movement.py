@@ -103,7 +103,8 @@ def resolve_movement(key, old_locs, proposed_locs):
     return jnp.where(reverted[:, None], old_locs, proposed_locs)
 
 
-def resolve_respawn(key, agent_locs, reborn_mask, spawn_points, dir_maxval=3):
+def resolve_respawn(key, agent_locs, reborn_mask, spawn_points, dir_maxval=3,
+                    blocked=None):
     """Occupancy-aware respawn: reborn agents land on unoccupied spawn cells.
 
     Args:
@@ -114,13 +115,19 @@ def resolve_respawn(key, agent_locs, reborn_mask, spawn_points, dir_maxval=3):
       dir_maxval: exclusive upper bound for the random spawn heading.
         Defaults to 3 to preserve the existing environments' quirk of never
         respawning with heading 3.
+      blocked: optional (S,) bool, spawn cells a reborn agent should not
+        land on although no agent is there (e.g. a cell holding an item the
+        landing would delete). They rank after the free cells and before the
+        survivors' cells. None (the default) keeps the original ranking and
+        RNG use exactly.
 
     Returns:
       (N, 3) array, same dtype as ``agent_locs``. Survivors keep their rows
       verbatim; reborn agents get (spawn_row, spawn_col, random_dir) on
       cells unoccupied by any survivor. With S >= N, survivors occupy at
       most N - R spawn cells (R = number reborn), leaving >= R free ranked
-      cells, so all N final (row, col) pairs are pairwise distinct.
+      cells, so all N final (row, col) pairs are pairwise distinct. Blocked
+      cells are used only when fewer than R cells are free of both.
     """
     k_perm, k_dir = jax.random.split(key)
     N = agent_locs.shape[0]
@@ -138,7 +145,11 @@ def resolve_respawn(key, agent_locs, reborn_mask, spawn_points, dir_maxval=3):
     # Integer sort keys (occupied * S + perm) have no ties, so the order is
     # exact and jit-safe — no boolean fancy-indexing needed.
     perm = jax.random.permutation(k_perm, S)
-    order = jnp.argsort(occupied * S + perm)
+    if blocked is None:
+        order = jnp.argsort(occupied * S + perm)
+    else:
+        # Free cells first, then blocked ones, survivors' cells last.
+        order = jnp.argsort((2 * occupied + blocked) * S + perm)
 
     # The r-th reborn agent (in index order) takes the r-th ranked cell.
     reborn_rank = jnp.cumsum(reborn_mask) - 1  # valid where reborn
